@@ -1,11 +1,8 @@
-# Process each OU
 foreach ($ou in $ouList) {
     Write-Log "Processing OU: $ou" $logFilePath
-    foreach ($dept in $departments) {
-        Write-Log "Processing Department: $dept in OU: $ou" $logFilePath
-        $users = Get-ADUser -Filter { Department -eq $dept } -SearchBase $ou -Properties LastLogonTimestamp, Manager, Enabled, UserPrincipalName, DisplayName, WhenCreated, mail
+   $users = Get-ADUser -Filter * -SearchBase $ou -Properties LastLogontimestamp, Manager, Enabled, UserPrincipalName, DisplayName, WhenCreated, mail -ResultPageSize 1000
         if ($users.Count -eq 0) {
-            Write-Log "No users found in Department: $dept and OU: $ou" $logFilePath
+            Write-Log "No users found in OU: $ou" $logFilePath
             continue
         }
         foreach ($user in $users) {
@@ -13,6 +10,7 @@ foreach ($ou in $ouList) {
 
             # Get the most recent LastLogon from AD
             $lastLogon = Get-LastLogon -userName $user.SamAccountName -logFilePath $logFilePath
+            #Write-Log "Latest logon date for user $lastLogon" $logFilePath
             #$lastLogonString = if ($lastLogon) { $lastLogon.ToString("yyyy-MM-dd") } else { "Never" }
 
             # Find the user in Azure AD
@@ -56,8 +54,10 @@ foreach ($ou in $ouList) {
             # Check if user creation is greater than 15 days, and last logon/sign-in is blank 
             elseif ($user.WhenCreated -lt $cutOffDate15Days -and -not $lastLogon -and -not $lastSignInDate) { 
             # Condition 2: No logons and account older than 15 days     (($lastLogon -eq $cutOffDate10Days -and (-not $lastSignInDate)) -or ($lastLogon -eq $cutOffDate10Days -and $lastSignInDate -eq $cutOffDate10Days))
-            Disable-ADAccount -Identity $user.SamAccountName     
-            $sessionRevoked = $true     
+            #9 Disable-ADAccount -Identity $user.SamAccountName     
+            $sessionRevoked = $true
+            #10 Revoke-UserSession -UserPrincipalName $userId  
+            Write-Log "Session has been Revoked fro  $userId"   
             $action = "Notification sent, Account disabled due to no logons for 15+ days"     
             Send-DisableNotification -userEmail $user.mail -userDisplayName $user.DisplayName -managerEmail $manager.EmailAddress -managerDisplayName $manager.Name -logFilePath $logFilePath     
             $mailSentToUser = "True"     
@@ -66,7 +66,7 @@ foreach ($ou in $ouList) {
             
 
 
-                        # Check the last logon and sign-in dates for inactivity 
+            # Check the last logon and sign-in dates for inactivity 
             elseif (($lastLogon -ge $cutOffDate10Days -and $lastLogon -le $cutOffDate15Days) -or ($lastSignInDate -ge $cutOffDate10Days -and $lastSignInDate -le $cutOffDate15Days)) {
             # Condition 1: Between 10 and 15 days of inactivity     
             $action = "Notification sent, (10-15 days of inactivity)"     
@@ -78,8 +78,10 @@ foreach ($ou in $ouList) {
             # Check if user creation is greater than 15 days, and last logon/sign-in is blank 
             elseif ($user.WhenCreated -lt $cutOffDate15Days -and -not $lastLogon -and -not $lastSignInDate) { 
             # Condition 2: No logons and account older than 15 days     
-            Disable-ADAccount -Identity $user.SamAccountName     
-            $sessionRevoked = $true     
+            #13 Disable-ADAccount -Identity $user.SamAccountName     
+            $sessionRevoked = $true
+            #14 Revoke-UserSession -UserPrincipalName $userId 
+            Write-Log "Session has been Revoked fro  $userId"    
             $action = "Notification sent, Account disabled due to no logons for 15+ days"     
             Send-DisableNotification -userEmail $user.mail -userDisplayName $user.DisplayName -managerEmail $manager.EmailAddress -managerDisplayName $manager.Name -logFilePath $logFilePath     
             $mailSentToUser = "True"     
@@ -89,8 +91,10 @@ foreach ($ou in $ouList) {
             
             elseif (($lastLogon -lt $cutOffDate15Days -or $lastLogon -eq $null) -and ($lastSignInDate -lt $cutOffDate15Days -or $lastSignInDate -eq $null) -and $user.WhenCreated -lt $cutOffDate15Days) {
                 # Condition 4: Disable users with logon/sign-in older than 15 days
-                Disable-ADAccount -Identity $user.SamAccountName
+                #16 Disable-ADAccount -Identity $user.SamAccountName
                 $sessionRevoked = $true
+                #17 Revoke-UserSession -UserPrincipalName $userId
+                Write-Log "Session has been Revoked for  $userId"
                 $action = "Notification sent, Account disabled due to inactivity (logon/sign-in older than 15 days)"
                 Send-DisableNotification -userEmail $user.mail -userDisplayName $user.DisplayName -managerEmail $manager.EmailAddress -managerDisplayName $manager.Name -logFilePath $logFilePath
                 $mailSentToUser = "True"
@@ -126,4 +130,3 @@ foreach ($ou in $ouList) {
             }
         }
     }
-}
